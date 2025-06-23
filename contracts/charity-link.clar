@@ -93,3 +93,83 @@
     (>= (get role role-data) required-role)
   )
 )
+
+;; Milestone tracking utility
+(define-private (get-last-milestone (beneficiary-id uint))
+  (var-get utilization-count)
+)
+
+;; ACCESS CONTROL MANAGEMENT
+
+;; Assign user roles with validation
+(define-public (set-role
+    (user principal)
+    (new-role uint)
+  )
+  (let ((existing-role (default-to u0 (get role (map-get? roles { user: user })))))
+    (if (and
+        (is-eq tx-sender (var-get contract-owner))
+        (<= new-role ROLE-BENEFICIARY)
+        (not (is-eq user tx-sender))
+        (or
+          (is-eq new-role ROLE-ADMIN)
+          (is-eq new-role ROLE-MODERATOR)
+          (is-eq new-role ROLE-BENEFICIARY)
+        )
+      )
+      (ok (map-set roles { user: user } { role: new-role }))
+      ERR-NOT-AUTHORIZED
+    )
+  )
+)
+
+;; Revoke user permissions
+(define-public (remove-role (user principal))
+  (if (and
+      (is-eq tx-sender (var-get contract-owner))
+      (is-some (map-get? roles { user: user }))
+      (not (is-eq user tx-sender))
+    )
+    (ok (map-delete roles { user: user }))
+    ERR-NOT-AUTHORIZED
+  )
+)
+
+;; BENEFICIARY MANAGEMENT
+
+;; Register new charitable organization
+(define-public (register-beneficiary
+    (name (string-utf8 50))
+    (description (string-utf8 255))
+    (target-amount uint)
+  )
+  (let ((beneficiary-id (+ (var-get beneficiary-count) u1)))
+    (if (and
+        (is-authorized tx-sender ROLE-MODERATOR)
+        (> (len name) u0)
+        (> (len description) u0)
+        (> target-amount u0)
+      )
+      (begin
+        (map-set beneficiaries { id: beneficiary-id } {
+          name: name,
+          description: description,
+          target-amount: target-amount,
+          received-amount: u0,
+          status: "active",
+        })
+        (var-set beneficiary-count beneficiary-id)
+        (ok beneficiary-id)
+      )
+      ERR-INVALID-INPUT
+    )
+  )
+)
+
+;; Retrieve beneficiary information
+(define-read-only (get-beneficiary (id uint))
+  (match (map-get? beneficiaries { id: id })
+    beneficiary (ok beneficiary)
+    ERR-BENEFICIARY-NOT-FOUND
+  )
+)
